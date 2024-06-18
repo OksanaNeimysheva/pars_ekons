@@ -1,0 +1,88 @@
+import requests
+from bs4 import BeautifulSoup
+import time
+import datetime
+import pandas as pd
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+
+
+##Парсинг всей страницы
+driver=webdriver.Chrome()
+
+driver.get('https://www.rbc.ru/tags/?tag=Экономика&project=rbcnews')
+
+for i in range(500):
+    driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
+    time.sleep(1)
+
+
+soup = BeautifulSoup(driver.page_source, "html.parser")
+content = soup.find_all('div', class_ ="search-item js-search-item" )
+
+#Парсинг ссылок
+links = [i.find('a')['href'] for i in content]
+links
+
+#Парсинг названий
+titles = [i.find('a')('span', class_ = "search-item__title") for i in content]
+titles = list(map(lambda x: x[0].text.strip(), titles))
+
+#Вписали во фрейм
+df = pd.DataFrame({'link':links, 'title':titles})
+
+#Удалили ссылки на видео
+df = df[df['link'].str.contains('video') == False]
+
+
+#Парсинг дат
+def get_date (url, time_tag):
+    time.sleep(4)
+    articles = requests.get(url)
+    articles_soup = BeautifulSoup(articles.text, 'html.parser')
+    articles_date = articles_soup.find('time', class_= time_tag)['datetime']
+    articles_date_text = datetime.datetime.strptime(articles_date[:10], "%Y-%m-%d").date().strftime("%d.%m.%Y")
+    print(f'Получено значение даты для: {url}')
+    return articles_date_text
+
+url = "https://www.rbc.ru/tags/?tag=Экономика&project=rbcnews"
+time_tag = "article__header__date"
+
+date = [get_date(url, time_tag) for url in df['link'].tolist()]
+
+#Внос даты в датафрейм
+df['date'] = date
+
+#Фильтр по дате
+df = df[(pd.to_datetime(df['date'], dayfirst=True) >= '2024-01-01') & (pd.to_datetime(df['date'], dayfirst=True) < '2024-04-01')]
+
+#Парсинг текста
+def get_text (url, div):
+    time.sleep(4)
+    articles = requests.get(url)
+    articles_soup = BeautifulSoup(articles.text, 'html.parser')
+    articles_content = articles_soup.find_all(div)
+    articles_text = [a.text for a in articles_content]
+    articles_text = '\n'.join(articles_text)
+    articles_text = articles_text.rsplit('РБК в Telegram')[0]
+    print(f'Получен текст для {url}')
+    return articles_text
+
+url = "https://www.rbc.ru/tags/?tag=Экономика&project=rbcnews"
+div = "p"
+
+info = [get_text(url,div) for url in df['link'].tolist()]
+
+#Внос текста в датафрейм
+df['text'] = info
+
+#Очистка от артефактов парсинга
+df = df.replace(to_replace ='\n', value = '', regex = True)
+df = df.replace(to_replace ='\xa0', value = '', regex = True)
+
+#Избавились от строк без текста
+df = df[df['text'] != '']
+
+#Сохранили датафрейм
+df.to_csv('RBC_economics.csv')

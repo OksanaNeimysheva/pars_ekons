@@ -1,0 +1,105 @@
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+import time
+from datetime import datetime
+from selenium import webdriver
+
+
+#Функция для получения ссылок
+def get_links_HH(soup):
+    links_content = soup.find_all('a', class_="bloko-link bloko-link_kind-tertiary")
+    # Извлекаем ссылки из найденных элементов
+    links = ['https://hh.ru' + link.get('href') for link in links_content]
+    # Извлекаем названия из найденных элементов
+    titles = [link.text for link in links_content]
+    df = pd.DataFrame({'links': links, 'titles': titles})
+
+    return df[df['titles'] != ''].reset_index().iloc[:,1:]
+
+df = pd.DataFrame({'links': [], 'text': []})
+
+
+df.to_csv('HH_contents.csv')
+
+driver = webdriver.Chrome()
+
+pages = ['https://hh.ru/articles/site-news?page=' + str(i) for i in range(63)]
+
+for page in pages:
+    driver.get(page)
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+    df = pd.concat([df, get_links(soup)], ignore_index=True)
+
+    time.sleep(5)
+
+df.to_excel('HH RU.xlsx', index=False)
+
+
+
+
+read_df = pd.read_excel('HH RU.xlsx', index_col=None, header=0)
+
+
+#Функция для получения получения даты, текста, заголовка
+def get_content_HH(soup):
+    articles_soup = \
+    soup.find_all('div',class_='bloko-columnbloko-column_xs-
+    4bloko-column_s-8bloko-column_m-9 bloko-column_l-10')
+    
+    #Получили текст
+    articles_text = [a.text.replace('\xa0', ' ') for a in 
+    articles_soup][0]
+
+    articles_date = soup.find_all('div','cms-header-content__data')
+
+    date = articles_date[0].text.split('\n')[0]
+
+    articles_title = soup.find_all('h2')[0].text
+
+    return [[articles_title], [articles_text], [date]]
+
+
+#Обработка полученных ссылок при помощи функции
+df = pd.DataFrame({'link': [], 'title': [], 'text': []})
+
+
+links = read_df.links[]
+
+
+ for url in links:
+
+      driver.get(url)
+
+      soup = BeautifulSoup(driver.page_source, "html.parser")
+      text_date = get_content_HH(soup)
+      df2 = pd.DataFrame({'title': text_date[0],
+      'text': text_date[1], 'date': text_date[2]})
+
+      df = pd.concat([df, df2], ignore_index=True)
+      # time.sleep(5)
+
+
+df['source'] = 'hh.ru'
+read_df.to_csv('HH_ru.csv')
+
+hh_df = pd.read_csv('HH_contents.csv', index_col=0, header=0)
+
+
+
+hh_df['date'] = hh_df['date'].replace({' января ': '.01.', ' февраля ': '.02.',
+                                                  ' марта ': '.03.', ' апреля ': '.04.',
+                                                  ' мая ': '.05.', ' июня ': '.06.',
+                                                  ' июля ': '.07.', ' августа ': '.08.',
+                                                  ' сентября ': '.09.', ' октября ': '.10.',
+                                                  ' ноября ': '.11.', ' декабря ': '.12.'}, regex = True)
+
+#Фильтруем по дате
+
+hh_df = hh_df[pd.to_datetime(hh_df['date'], dayfirst=True) >= '01.01.2021']
+
+##Очистка
+hh_df = hh_df.replace(to_replace ='\xa0', value = '', regex = True)
+
+
+hh_df.to_csv('hh_prefinal.csv', index=False)

@@ -1,0 +1,69 @@
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+import time
+from datetime import datetime
+from selenium import webdriver
+
+#Получение страницы
+driver = webdriver.Chrome()
+
+driver.get('https://rb.ru/news')
+
+for i in range(500):
+    button = driver.find_element("xpath", "//div[@class='show-more show-more-tag ']")
+
+    button.click()
+
+    time.sleep(5)
+
+soup = BeautifulSoup(driver.page_source, "html.parser")
+
+soup2 = soup.find_all('div', class_="news-item__text")
+
+##Получение ссылок, даты, названий
+
+def get_links(div):
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+    soup2 = soup.find_all('div', class_=div)
+    links = ['ttps://rb.ru/news' + s.find('a')['href'] for s in soup2]
+    titles = [s.find('a').text for s in soup2]
+    date = [s.find_all('time', "news-item__date")[0]['datetime'] for s in soup2]
+    return pd.DataFrame({'link': links, 'title': titles, 'date': date})
+
+div = "news-item__text"
+
+df = get_links(div)
+
+df['link'] = 'h'+df['link']
+
+#Фильтр по дате
+df = df[(pd.to_datetime(df['date'], dayfirst=True) >= '2021-01-01') & (pd.to_datetime(df['date'], dayfirst=True) < '2024-04-01')]
+
+#Получение текста
+def get_text (url, div_class):
+    time.sleep(4)
+    articles = requests.get(url)
+    articles_soup = BeautifulSoup(articles.text, 'html.parser')
+    articles_content = articles_soup.find_all('div', class_ = div_class)
+    articles_text = [a.text for a in articles_content]
+    articles_text = '\n'.join(articles_text)
+    articles_text = articles_text.rsplit('Фото на обложке:')[0]
+    print(f'Получен текст для {url}, {datetime.now().strftime("%H:%M:%S")}')
+    return articles_text
+
+url = "https://rb.ru/news"
+div_class = "article__content-block abv"
+
+info = [get_text(url,div_class) for url in df['link'].tolist()]
+
+df['text'] = info
+
+#Очистака от мусора и дублей
+df = df.replace(to_replace ='\n', value = '', regex = True)
+df = df.replace(to_replace ='\xa0', value = '', regex = True)
+df = df.drop_duplicates(subset=['text'])
+
+
+df['source'] = 'RB.ru'
+df.to_csv('RB_analyzed_1.csv')
